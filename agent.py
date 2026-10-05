@@ -13,6 +13,8 @@ Build and test your three tools in `tools.py` first. Then come here.
     python agent.py          runs both example paths below
 """
 
+import re
+
 import config
 import trace
 from tools import search_listings, suggest_outfit, create_fit_card
@@ -48,6 +50,41 @@ def new_session(query: str, wardrobe: dict) -> dict:
 
 
 # ── planning loop ─────────────────────────────────────────────────────────────
+
+def _parse_query(query: str) -> dict:
+    parsed = {
+        "description": query.strip(),
+        "size": None,
+        "max_price": None,
+    }
+
+    price_match = re.search(r"(?:under|below|less than|max|up to)\s*\$?(\d+(?:\.\d+)?)", query, re.I)
+    if price_match:
+        parsed["max_price"] = float(price_match.group(1))
+
+    size_match = re.search(
+        r"(?:size|sz)\s+((?:us\s*)?\d+(?:\.\d+)?|xxs|xs|s|m|l|xl|xxl|one size|w\d+(?:\s*l\d+)?)",
+        query,
+        re.I,
+    )
+    if size_match:
+        parsed["size"] = re.sub(r"\s+", " ", size_match.group(1).strip()).upper()
+        if parsed["size"].startswith("US"):
+            parsed["size"] = parsed["size"].replace("US", "US ", 1)
+
+    description = query
+    spans = []
+    if price_match:
+        spans.append(price_match.span())
+    if size_match:
+        spans.append(size_match.span())
+    for start, end in sorted(spans, reverse=True):
+        description = description[:start] + description[end:]
+    description = re.sub(r"\b(in|for|looking for|find me|show me)\b", " ", description, flags=re.I)
+    description = re.sub(r"[$,]", " ", description)
+    description = re.sub(r"\s+", " ", description).strip()
+    parsed["description"] = description or query.strip()
+    return parsed
 
 def run_agent(query: str, wardrobe: dict) -> dict:
     """
@@ -105,10 +142,46 @@ def run_agent(query: str, wardrobe: dict) -> dict:
       • A handler for ModelUnavailable, so a bad key produces a message rather
         than a stack trace. The import is already at the top of this file.
     """
+    count = 1
+    trace.check_iterations(count)
     session = new_session(query, wardrobe)
 
-    # TODO: delete these two lines and build the loop.
-    session["error"] = "The planning loop isn't built yet — see the TODO in agent.py."
+    try:
+        session["parsed"] = _parse_query(query)
+
+        count += 1
+        trace.check_iterations(count)
+        session["search_results"] = search_listings(
+            session["parsed"]["description"],
+            size=session["parsed"]["size"],
+            max_price=session["parsed"]["max_price"],
+        )
+
+        if not session["search_results"]:
+            session["error"] = (
+                "I couldn't find a matching listing. Try changing the item words, "
+                "removing the size, or raising the price ceiling."
+            )
+            return session
+
+        session["selected_item"] = session["search_results"][0]
+
+        count += 1
+        trace.check_iterations(count)
+        session["outfit_suggestion"] = suggest_outfit(
+            session["selected_item"],
+            session["wardrobe"],
+        )
+
+        count += 1
+        trace.check_iterations(count)
+        session["fit_card"] = create_fit_card(
+            session["outfit_suggestion"],
+            session["selected_item"],
+        )
+    except ModelUnavailable as exc:
+        session["error"] = str(exc)
+
     return session
 
 

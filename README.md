@@ -41,7 +41,7 @@
 
 <!-- Three or four sentences: what a user asks for, and what they get back. -->
 
-
+FitFindr takes a plain-language request for a thrifted clothing item, searches the local listings data, and picks the best matching result. If it finds an item, it asks the model for an outfit suggestion using the user's saved wardrobe, then turns that into a short fit card caption. If no listing matches, the agent stops early and tells the user what to change instead of trying to style nothing.
 
 ---
 
@@ -59,24 +59,24 @@
 
 ### `search_listings`
 
-- **What it does:**
-- **Inputs:** <!-- name and type each: `max_price` (float), not "a price" -->
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Searches the listing dataset for items that match a keyword description, optional size, and optional maximum price.
+- **Inputs:** `description` (str), `size` (str or None), `max_price` (float or None).
+- **Returns:** A list of listing dicts, best match first, each containing `id`, `title`, `description`, `category`, `style_tags`, `size`, `condition`, `price`, `colors`, `brand`, and `platform`.
+- **When it has nothing:** Returns an empty list `[]`.
 
 ### `suggest_outfit`
 
-- **What it does:**
-- **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Suggests one or two ways to style the selected thrift item with the user's wardrobe.
+- **Inputs:** `new_item` (dict listing), `wardrobe` (dict with an `items` list).
+- **Returns:** A non-empty string with outfit suggestions that name usable wardrobe pieces when the wardrobe has items.
+- **When it has nothing:** If the wardrobe is empty, returns general styling advice using common closet staples instead of failing.
 
 ### `create_fit_card`
 
-- **What it does:**
-- **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Turns the outfit suggestion and selected listing into a short social-style caption.
+- **Inputs:** `outfit` (str), `new_item` (dict listing).
+- **Returns:** A two-to-four sentence string mentioning the item, price, platform, and vibe.
+- **When it has nothing:** If `outfit` is empty or whitespace, returns a message saying an outfit suggestion is needed first.
 
 ---
 
@@ -93,13 +93,13 @@
      The grader checks your code against what you claim here, so the file and
      function have to be real. -->
 
-**Branch rule:**
+**Branch rule:** If `search_listings` returns an empty list, put a helpful message in `session["error"]` and stop. Otherwise, store the first result in `session["selected_item"]`, call `suggest_outfit`, then call `create_fit_card`.
 
 **Where it lives:** `agent.py::run_agent`
 
-**How the query is parsed:** <!-- regex, string splitting, or asking the model — say which -->
+**How the query is parsed:** Regex. The parser looks for price phrases like `under $30` and size phrases like `size M`, then cleans those phrases out to leave the item description.
 
-**What moves through the session:** <!-- which fields, in what order -->
+**What moves through the session:** The query is stored first, then parsed into `description`, `size`, and `max_price`. Search results go into `session["search_results"]`, the first result goes into `session["selected_item"]`, the model outfit goes into `session["outfit_suggestion"]`, and the final caption goes into `session["fit_card"]`.
 
 ---
 
@@ -113,24 +113,43 @@
 **One full query**
 
 ```
-$ python app.py ask '...'
+$ .venv/bin/python app.py ask 'vintage graphic tee under $30'
+
+  Found:    Y2K Baby Tee — Butterfly Print — $18.0 on depop
+
+  Outfit:   **Outfit 1: Y2K Streetwear**
+Pair the baby tee with your **baggy dark-wash jeans** to balance the fitted top with loose bottoms. Finish with **chunky white sneakers** and your **black crossbody bag**.
+
+**Outfit 2: Edge & Sweet**
+Layer the baby tee under your **vintage black denim jacket** paired with the **baggy dark-wash jeans** and **black combat boots** for a tougher Y2K look.
+
+  Fit card: Unapologetic Y2K energy right here. This graphic butterfly baby tee is giving all the nostalgic feels for just $18. Pair it with baggy dark-wash jeans and chunky white sneakers, or toughen it up with a vintage black denim jacket and combat boots. Grab it now exclusively on Depop before it's gone.
+
+2 model calls this session, 582 prompt + 168 output tokens
 
 ```
 
 **The three tools, tested one at a time**
 
 ```
-$ python -c "from tools import search_listings; print(search_listings('graphic tee', max_price=30))"
+$ .venv/bin/python -c 'from tools import search_listings; print([(x["title"], x["price"]) for x in search_listings("graphic tee", max_price=30)[:3]])'
+[('Y2K Baby Tee — Butterfly Print', 18.0), ('Vintage Band Tee — Faded Grey', 19.0), ('Graphic Tee — 2003 Tour Bootleg Style', 24.0)]
 
 ```
 
 ```
-$ python -c "from tools import suggest_outfit; ..."
+$ .venv/bin/python -c 'from tools import suggest_outfit; from utils.data_loader import get_example_wardrobe, load_listings; print(suggest_outfit(load_listings()[1], get_example_wardrobe()))'
+**Outfit 1: Y2K Streetwear**
+Pair the baby tee with your **baggy dark-wash jeans** to balance the fitted top with loose bottoms. Finish with **chunky white sneakers** and your **black crossbody bag**.
+
+**Outfit 2: Edge & Sweet**
+Layer the baby tee under your **vintage black denim jacket** paired with the **baggy dark-wash jeans** and **black combat boots** for a tougher Y2K look.
 
 ```
 
 ```
-$ python -c "from tools import create_fit_card; ..."
+$ .venv/bin/python -c 'from tools import create_fit_card; from utils.data_loader import load_listings; print(create_fit_card("Pair with baggy jeans and chunky white sneakers.", load_listings()[1]))'
+Channeling major early 2000s energy with this butterfly print Y2K baby tee. Grab it on Depop for just $18 before someone else does. Throw it on with your favorite baggy jeans and chunky white sneakers for the easiest weekend fit.
 
 ```
 
@@ -147,15 +166,15 @@ $ python -c "from tools import create_fit_card; ..."
 
 **Moment 1**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I asked Codex to implement the three starter tools while following the assignment spec.
+- *What came back:* The first implementation used deterministic keyword scoring for search and model prompts for the outfit and fit card tools.
+- *What I changed:* I checked the listing data and made the size filter token-based so `S` would not accidentally match shoe sizes like `US 9`.
 
 **Moment 2**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I asked Codex to test the parser and search commands from the terminal.
+- *What came back:* The first quick parser test lost `$30` because it was inside a double-quoted shell command.
+- *What I changed:* I reran the test with safe quoting and kept the README sample commands in single quotes so the price ceiling is preserved.
 
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 

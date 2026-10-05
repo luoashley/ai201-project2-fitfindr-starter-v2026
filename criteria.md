@@ -25,9 +25,7 @@ Given a query that matches at least one listing, the agent completes all three
 tool calls and returns a fit card — in at least 4 of 5 tries.
 
 **Why this target:**
-<!-- Why 4 of 5 and not 5 of 5? Something about your search, probably —
-     "my search is a plain keyword match and some phrasings will miss" is a
-     real answer. -->
+I picked 4 of 5 instead of 5 of 5 because the search is a plain keyword overlap search. It should work for direct phrases in the data, but a user can phrase the same item in a way that does not share enough words with the listing.
 
 ---
 
@@ -37,8 +35,7 @@ Given a query that matches no listings, the agent stops before calling
 `suggest_outfit` and returns a message naming what to change — 5 of 5 tries.
 
 **Why this target:**
-<!-- Why is 5 of 5 reasonable here when criterion 1 isn't? What's different
-     about this path? -->
+This should be 5 of 5 because it is deterministic code, not model wording. When search returns an empty list, the loop has one clear branch: stop before the outfit tool and tell the user what to change.
 
 ---
 
@@ -54,10 +51,10 @@ Given a query that matches no listings, the agent stops before calling
      compares session["selected_item"] against what actually reached
      suggest_outfit is the shape you're after. -->
 
-
+For 5 matching queries, `session["selected_item"]["id"]` is the same id as the `new_item` passed into `suggest_outfit` — 5 of 5 tries.
 
 **Why this target:**
-
+This should be 5 of 5 because the loop stores the first search result in the session and then reads that exact session value back for the outfit tool. If this fails, the bug is in state movement, not model variation.
 
 
 ---
@@ -75,10 +72,10 @@ Given a query that matches no listings, the agent stops before calling
      sentence? A card longer than a caption anyone would post? Any of those can
      be turned into a number. -->
 
-
+For 5 successful fit cards, each card mentions the selected item or a clear shortened version of it, includes the price, and includes the platform — at least 4 of 5 tries.
 
 **Why this target:**
-
+I picked 4 of 5 because the fit card is model-written, so the wording can vary and may paraphrase the title. The price and platform are explicit in the prompt, so most runs should include them.
 
 
 ---
@@ -92,10 +89,10 @@ Given a query that matches no listings, the agent stops before calling
      search respects a price ceiling — anything, as long as it names a number
      or an observable outcome. -->
 
-
+Given a query with a price ceiling, every listing returned by `search_listings` has `price <= max_price` — 5 of 5 tested queries.
 
 **Why this target:**
-
+This should be 5 of 5 because price filtering is deterministic and happens before keyword scoring. A result over budget would mean the filter is wrong, not that the model wrote something unexpected.
 
 
 ---
