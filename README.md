@@ -196,17 +196,60 @@ Channeling major early 2000s energy with this butterfly print Y2K baby tee. Grab
 
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. Matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 2. Impossible query stops before `suggest_outfit` | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. Selected item id is the id passed to `suggest_outfit` | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. Fit card mentions item, price, and platform | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 5. Price ceiling is respected by search results | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
 
 **Real output from one try**, pasted as text, naming the file and function
 that produced it:
 
+Full evidence file: `results/run_2026-10-13_2119_before.md`, produced by `run_eval.py::main`.
+
+Criterion 1, matching query completed all three tools:
+
+$ .venv/bin/python run_eval.py --label before
+
+matching query completes
+- Query: `vintage graphic tee under $30`
+- selected_item: Y2K Baby Tee — Butterfly Print ($18.0, depop)
+- search_results: 10
+
+Fit card:
+```
+The ultimate Y2K butterfly baby tee just landed on my Depop for $18. Pair it with baggy dark-wash denim and a black jacket for that effortless street edge, or dress it down with wide-leg trousers. Pure 2000s energy, ready for your rotation.
 ```
 
+Criterion 2, empty search stopped early:
+
+```
+stopped early: yes — I couldn't find a matching listing. Try changing the item words, removing the size, or raising the price ceiling.
+selected_item: (none)
+search_results: 0
+```
+
+Criterion 3, selected item id matched the id passed into `suggest_outfit`:
+
+```
+selected_item: 90s Track Jacket — Navy/White Stripe ($45.0, poshmark)
+selected_item_id: lst_004
+suggest_outfit_item_id: lst_004
+```
+
+Criterion 4, fit card included item/price/platform:
+
+```
+Major 90s energy incoming. These chunky platform sneakers add the exact right amount of height and attitude, and they're yours for $48 on Poshmark. Style them with a cropped zip hoodie and baggy denim for peak Y2K streetwear, or keep it clean with wide-leg khakis and a layered grey crewneck.
+```
+
+Criterion 5, price ceiling respected:
+
+```
+query: graphic tee under $20
+search_results: 3
+out: 3 items: Y2K Baby Tee — Butterfly Print, Vintage Band Tee — Faded Grey, Mesh Long-Sleeve Top — Black
+selected_item: Y2K Baby Tee — Butterfly Print ($18.0, depop)
 ```
 
 ---
@@ -231,14 +274,21 @@ that produced it:
 
 | # | Criterion | Target | Verdict | How I decided |
 |---|---|---|---|---|
-| 1 |  |  |  |  |
-| 2 |  |  |  |  |
-| 3 |  |  |  |  |
-| 4 |  |  |  |  |
-| 5 |  |  |  |  |
+| 1 | Matching query completes all three tools | 4 of 5 | MET | All five tries selected an item, produced an outfit suggestion, and returned a non-empty fit card. |
+| 2 | Impossible query stops before `suggest_outfit` | 5 of 5 | MET | All five tries stopped with `search_results: 0`, `selected_item: (none)`, and no fit card. |
+| 3 | State carries the selected item into `suggest_outfit` | 5 of 5 | MET | All five tries had the same `selected_item_id` and `suggest_outfit_item_id`; for the track jacket scenario both were `lst_004`. |
+| 4 | Fit card mentions item, price, and platform | 4 of 5 | MET | All five fit cards named the item or a clear shortened version, included `$48`, and named Poshmark. |
+| 5 | Price ceiling is respected | 5 of 5 | MET | All five `graphic tee under $20` tries returned only listings priced at or below $20. |
 
 **Diagnoses**
 
+No criterion missed. The targets were not empty, but criterion 4 was looser than I would write it now: "the item or a clear shortened version" passed cards that said "chunky platform sneakers" instead of the exact listing title `Platform Sneakers — White Chunky Sole`. That is acceptable under the original criterion, but it is less auditable than exact title matching.
+
+Failure modes triggered on purpose:
+
+- Empty search: `designer ballgown size XXS under $5` stopped before `suggest_outfit` and told the user to change item words, remove size, or raise the price ceiling.
+- Empty wardrobe: `.venv/bin/python app.py ask 'denim jacket under $50' --empty-wardrobe` returned general styling advice with common pieces instead of crashing.
+- Model unavailable: `GEMINI_API_KEY=bad-key AI201_CACHE=0 .venv/bin/python app.py ask 'emerald velvet blazer under $60'` returned `The model rejected your API key... Try checking GEMINI_API_KEY in .env, then rerun with a new query so the model call is not served from cache.`
 
 
 ---
@@ -258,12 +308,35 @@ that produced it:
 **Happy path**
 
 ```
+[1] parse_query
+      in:  dict with keys: query
+      out: dict with keys: description, size, max_price
+[2] search_listings (via MCP)
+      in:  dict with keys: description, size, max_price
+      out: 10 items: Y2K Baby Tee — Butterfly Print, Vintage Band Tee — Faded Grey, Graphic Tee — 2003 Tour Bootleg Style … +7 more
+[3] select_item
+      out: Y2K Baby Tee — Butterfly Print ($18.0, depop)
+[4] suggest_outfit
+      in:  dict with keys: new_item_id, wardrobe_items
+      out: **Outfit 1: Y2K Streetwear** *   **Top:** Y2K Butterfly Baby Tee *   **Bottoms:** Baggy dark-wash straight-leg…
+[5] create_fit_card
+      in:  dict with keys: new_item_id, outfit_chars
+      out: The ultimate Y2K butterfly baby tee just landed on my Depop for $18. Pair it with baggy dark-wash denim and a …
 
 ```
 
 **Empty search**
 
 ```
+[1] parse_query
+      in:  dict with keys: query
+      out: dict with keys: description, size, max_price
+[2] search_listings (via MCP)
+      in:  dict with keys: description, size, max_price
+      out: [] (empty)
+[3] branch
+      out: I couldn't find a matching listing. Try changing the item words, removing the size, or raising the price ceili…
+      →    empty search, stopping
 
 ```
 
@@ -272,6 +345,16 @@ behaved differently afterwards. If the rewire didn't work, say exactly where it
 broke — the error text and the last thing that worked. That earns the point in
 full. -->
 
+I moved `search_listings` behind MCP. `mcp_server.py` now registers the tool with typed inputs `description` (`str`), `size` (`str | None`), and `max_price` (`float | None`). `agent.py::run_agent` calls it with `mcp_client.call_tool("search_listings", ...)` instead of importing and calling it directly. The return shape stayed the same: a list of listing dicts, or `[]` for no match.
+
+`python mcp_client.py` lists:
+
+```
+search_listings
+  Search thrift listings by a text description, optional size string, and
+  optional maximum price in dollars. Returns matching listing dictionaries
+  ordered best-first; returns an empty list when nothing matches.
+```
 
 
 ---
@@ -284,20 +367,31 @@ full. -->
      `python run_eval.py --label after` -->
 
 **What I changed:**
+I tightened the `create_fit_card` prompt in `tools.py` so it asks the model to use the exact item title once, exact price once, and exact platform once.
 
 **Which failure it was meant to fix:**
+It was meant to make criterion 4 easier to score. Before the change, criterion 4 passed, but some cards used shortened phrases like "chunky platform sneakers" rather than the exact title. That was acceptable under the original criterion, but less precise than I wanted.
 
 ### Run Log — After
 
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. Matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 2. Impossible query stops before `suggest_outfit` | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. Selected item id is the id passed to `suggest_outfit` | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. Fit card mentions item, price, and platform | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 5. Price ceiling is respected by search results | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
 
 **Did it help, and how do I know:**
+Full evidence file: `results/run_2026-10-13_2122_after.md`, produced by `run_eval.py::main`.
+
+It helped partly. The original criterion 4 was already met before and after, so the pass count stayed 5/5. The stricter behavior improved: before, the platform-sneaker fit cards usually used shortened item wording; after the prompt change, 3 of 5 used the exact full title `Platform Sneakers — White Chunky Sole`, and all 5 still included the price and platform.
+
+After example:
+
+```
+The ultimate Y2K staple just landed. Pair these Platform Sneakers — White Chunky Sole with baggy denim and a zip hoodie for that off-duty look, or dress them down with khaki trousers. Grab this fresh find on Poshmark for $48.0 before someone else does.
+```
 
 <!-- If it made things worse, say that. Honestly reported, that earns full
      credit and is more interesting than one that worked. -->
@@ -307,6 +401,8 @@ full. -->
 ---
 
 ## What's Still Broken
+
+Nothing in the five original criteria is still missed. The remaining weakness is measurement: criterion 4 allows "clear shortened version," which makes the grader read subjectively. If I kept going, I would revise that criterion in the next unit to require the exact listing title, exact price, and platform in 5 of 5 fit cards, or add a scorer that checks those strings directly.
 
 <!-- For each criterion still missed: what you'd do, and why you stopped where
      you did. "I ran out of time" is fine if it's true. Pretending nothing is
