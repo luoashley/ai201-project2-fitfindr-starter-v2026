@@ -264,8 +264,9 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
         f"Platform: {new_item.get('platform')}\n"
         f"Style tags: {', '.join(new_item.get('style_tags', []))}\n"
         f"Outfit idea: {outfit}\n\n"
-        "Mention the item, price, and platform once each. Make it sound like a "
-        "real fit card, not a product listing."
+        "Use the exact item title once, the exact price once, and the exact "
+        "platform once. Make it sound like a real fit card, not a product "
+        "listing."
     )
     return generate(
         prompt,
