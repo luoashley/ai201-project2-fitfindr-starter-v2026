@@ -17,7 +17,8 @@ import re
 
 import config
 import trace
-from tools import search_listings, suggest_outfit, create_fit_card
+from mcp_client import MCPError, call_tool
+from tools import suggest_outfit, create_fit_card
 from generate import ModelUnavailable
 
 
@@ -42,6 +43,7 @@ def new_session(query: str, wardrobe: dict) -> dict:
         "parsed": {},                # description / size / max_price you pulled out of it
         "search_results": [],        # everything search_listings returned
         "selected_item": None,       # the one you chose — goes into suggest_outfit
+        "suggest_outfit_item_id": None,  # item id read back from session for suggest_outfit
         "wardrobe": wardrobe,        # the user's wardrobe
         "outfit_suggestion": None,   # what suggest_outfit returned
         "fit_card": None,            # what create_fit_card returned
@@ -148,29 +150,46 @@ def run_agent(query: str, wardrobe: dict) -> dict:
 
     try:
         session["parsed"] = _parse_query(query)
+        trace.step("parse_query", inputs={"query": query}, returned=session["parsed"])
 
         count += 1
         trace.check_iterations(count)
-        session["search_results"] = search_listings(
-            session["parsed"]["description"],
-            size=session["parsed"]["size"],
-            max_price=session["parsed"]["max_price"],
+        search_inputs = {
+            "description": session["parsed"]["description"],
+            "size": session["parsed"]["size"],
+            "max_price": session["parsed"]["max_price"],
+        }
+        session["search_results"] = call_tool(
+            "search_listings",
+            search_inputs,
         )
+        trace.step("search_listings (via MCP)", inputs=search_inputs, returned=session["search_results"])
 
         if not session["search_results"]:
             session["error"] = (
                 "I couldn't find a matching listing. Try changing the item words, "
                 "removing the size, or raising the price ceiling."
             )
+            trace.step("branch", returned=session["error"], note="empty search, stopping")
             return session
 
         session["selected_item"] = session["search_results"][0]
+        trace.step("select_item", returned=session["selected_item"])
 
         count += 1
         trace.check_iterations(count)
+        session["suggest_outfit_item_id"] = session["selected_item"].get("id")
         session["outfit_suggestion"] = suggest_outfit(
             session["selected_item"],
             session["wardrobe"],
+        )
+        trace.step(
+            "suggest_outfit",
+            inputs={
+                "new_item_id": session["suggest_outfit_item_id"],
+                "wardrobe_items": len(session["wardrobe"].get("items", [])),
+            },
+            returned=session["outfit_suggestion"],
         )
 
         count += 1
@@ -179,8 +198,26 @@ def run_agent(query: str, wardrobe: dict) -> dict:
             session["outfit_suggestion"],
             session["selected_item"],
         )
+        trace.step(
+            "create_fit_card",
+            inputs={
+                "new_item_id": session["selected_item"].get("id"),
+                "outfit_chars": len(session["outfit_suggestion"] or ""),
+            },
+            returned=session["fit_card"],
+        )
+    except MCPError as exc:
+        session["error"] = (
+            "The listing search tool could not be reached through MCP. "
+            f"{exc}"
+        )
+        trace.step("error", returned=session["error"], note="MCP failure")
     except ModelUnavailable as exc:
-        session["error"] = str(exc)
+        session["error"] = (
+            f"{exc} Try checking GEMINI_API_KEY in .env, then rerun with a new query "
+            "so the model call is not served from cache."
+        )
+        trace.step("error", returned=session["error"], note="model unavailable")
 
     return session
 
